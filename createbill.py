@@ -13,6 +13,9 @@ __author__ = "Paul Wichern"
 __license__ = "MIT"
 __version__ = "0.0.1"
 
+# TODO: Add table for meter values
+# TODO: Stimmt "share amount" bei Consumption based?
+# TODO: Add units to table view
 # TODO: BillItem contains strings with placeholder for 'row' and then ResultSheet.write() will replace that with the actual row
 # TODO: Print report, showing;
 #           - missing files for invoices
@@ -23,6 +26,10 @@ __version__ = "0.0.1"
 # TODO: Janine: beautify example bill
 # TODO: Bundle Excel Sheet with all invoices into a zip
 # TODO: Create PDF of the first Excel page with a method that will do nothing if pypdf2 is not available.
+# TODO: Guess NK for 2023
+# TODO: Make front page
+# TODO: Mention invoice filename in BillItem Row
+# TODO: Mention why bill item was split in "Anmerkung"
 
 def warning(msg: str):
     print('WARNUNG: ' + msg)
@@ -176,13 +183,14 @@ class BillItem:
     invoice_range_days: str
     share_name: str
     share_percentage: str
+    unit: str
     sum: str
 
     def __init__(self, invoice: Invoice, bci: BillCalculationItem, appartements: List[Appartement], bill_range: DateRange, row_idx: int, total_people_count: int, appartement_size: str, consumption: str, tenant: Tenant):
         self.range = DateRange(
             max(bill_range.begin, invoice.range.begin), 
             min(bill_range.end, invoice.range.end))
-        self.days = '= TAGE(B{0}, A{0})'.format(row_idx)
+        self.days = '=_xlfn.days(B{0}, A{0})'.format(row_idx)
         self.type = invoice.type
         self.description = invoice.notes
         self.meter = bci.meter
@@ -190,26 +198,31 @@ class BillItem:
         self.amount = invoice.amount
         self.tax = invoice.tax
         self.gross = '=G{0}*H{0}*(1+I{0})'.format(row_idx)
-        self.invoice_range_days = f'= DAYS({invoice.range.end}, {invoice.range.begin})'
+        self.invoice_range_days = f'=_xlfn.days("{invoice.range.end}", "{invoice.range.begin}")'
         self.share_name = bci.split
         self.share_percentage = self.__get_share_percentage(appartements, bci.split, total_people_count, appartement_size, consumption, tenant)
-        self.sum = '=J{0}/K{0}*C{0}*M{0}'.format(row_idx)
+        self.unit = str(bci.unit)
+
+        if bci.split == 'Nach Verbrauch':
+            self.sum = '=G{0}*(1+I{0})*M{0}'.format(row_idx)
+        else:
+            self.sum = '=J{0}/K{0}*C{0}*M{0}'.format(row_idx)
 
     def __get_share_percentage(self, appartements: List['Appartement'], split: str, total_people_count: int, appartement_size: str, consumption: str, tenant: Tenant):
         if split == 'Pro Wohnung':
-            return f'1/{len(appartements)}'
+            return f'=1/{len(appartements)}'
         elif split == 'Pro Person':
-            return f'{total_people_count}/{tenant.people}'
+            return f'={tenant.people}/{total_people_count}'
         elif split == 'Pro Quadratmeter':
-            return f'{sum([a.size for a in appartements])}/{appartement_size}'
+            return f'={appartement_size}/{sum([a.size for a in appartements])}'
         elif split == 'Nach Verbrauch':
-            return consumption
+            return '=' + consumption
         elif split == 'Hälfte':
-            return '1/2'
+            return '=1/2'
         elif split == 'Drittel':
-            return '1/3'
+            return '=1/3'
         elif split == 'Viertel':
-            return '1/4'
+            return '=1/4'
         elif split == 'Komplett':
             return '1'
         else:
@@ -225,29 +238,62 @@ class ResultSheet(object):
         self._filepath = filepath
 
     def write(self, row: int, bill_item: BillItem):
-        self._sheet.cell(row=row, column=1).value = str(bill_item.range.begin)
-        self._sheet.cell(row=row, column=2).value = str(bill_item.range.end)
+        for c in range(1, 15):
+            self._sheet.cell(row=row, column=c).style = 'content'
+        self._sheet.cell(row=row, column=1).value = bill_item.range.begin.date
+        self._sheet.cell(row=row, column=1).number_format = 'DD.MM.YY'
+        self._sheet.cell(row=row, column=2).value = bill_item.range.end.date
+        self._sheet.cell(row=row, column=2).number_format = 'DD.MM.YY'
         self._sheet.cell(row=row, column=3).value = bill_item.days
         self._sheet.cell(row=row, column=4).value = bill_item.type
         self._sheet.cell(row=row, column=5).value = bill_item.description
         self._sheet.cell(row=row, column=6).value = bill_item.meter
         self._sheet.cell(row=row, column=7).value = bill_item.net
+        self._sheet.cell(row=row, column=7).number_format = '0.00" "€'
         self._sheet.cell(row=row, column=8).value = bill_item.amount
         self._sheet.cell(row=row, column=9).value = bill_item.tax
+        self._sheet.cell(row=row, column=9).number_format = '0.00" "%'
         self._sheet.cell(row=row, column=10).value = bill_item.gross
+        self._sheet.cell(row=row, column=10).number_format = '0.00" "€'
         self._sheet.cell(row=row, column=11).value = bill_item.invoice_range_days
+        self._sheet.cell(row=row, column=11).number_format = '0" Tage"'
         self._sheet.cell(row=row, column=12).value = bill_item.share_name
+
         self._sheet.cell(row=row, column=13).value = bill_item.share_percentage
+        if bill_item.share_name == 'Pro Person':
+            self._sheet.cell(row=row, column=13).number_format = '0.00" "%'
+        elif bill_item.share_name == 'Nach Verbrauch':
+            self._sheet.cell(row=row, column=13).number_format = '0.00" ' + bill_item.unit + '"'
+        elif bill_item.share_name == 'Pro Wohnung':
+            self._sheet.cell(row=row, column=13).number_format = '0.00" "%'
+        elif bill_item.share_name == 'Pro Quadratmeter':
+            self._sheet.cell(row=row, column=13).number_format = '0.00" "%'
+
         self._sheet.cell(row=row, column=14).value = bill_item.sum
+        self._sheet.cell(row=row, column=14).number_format = '0.00" "€'
 
     def __enter__(self):
         ''' Open the template sheet '''
         self._wb = openpyxl.load_workbook(self.template_filepath)
         self._sheet = self._wb['Details']
+
+        header = openpyxl.styles.NamedStyle(name='header')
+        header.font = openpyxl.styles.Font(name='Calibri', bold=True, size=11)
+        self._wb.add_named_style(header)
+
+        content = openpyxl.styles.NamedStyle(name='content')
+        content.font = openpyxl.styles.Font(name='Calibri', size=11)
+        self._wb.add_named_style(content)
+
+        # Apply styles
+        for cell in self._sheet['1']:
+            cell.style = 'header'
+
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         ''' Write the result '''
+
         self._wb.save(self._filepath)
 
 def read_table(path):
@@ -371,7 +417,7 @@ def get_meter_value(meter_values: List[MeterValue], meter_name: str, date: Date)
 
     return MeterValue(
         meter_name,
-        f'=({mv_end.count}-{mv_start.count})/DAYS("{str(mv_end.date)}", "{str(mv_start.date)}")*DAYS("{str(date)}", "{str(mv_start.date)}")',
+        f'({mv_end.count}-{mv_start.count})/_xlfn.days("{str(mv_end.date)}", "{str(mv_start.date)}")*_xlfn.days("{str(date)}", "{str(mv_start.date)}")',
         date,
         'Geschätzt'
     )
@@ -414,6 +460,7 @@ def main(args):
                     for invoice_split, people_count in split_invoice_where_person_count_changes(split_dates, invoice, invoice.range):
                         bill_item = BillItem(invoice_split, bci, appartements, bill_range, row, people_count, appartement_size, 0, tenant)
                         result_sheet.write(row, bill_item)
+                        row += 1
                 elif bci.split == 'Nach Verbrauch':
                     consumption_range: DateRange = DateRange(
                         max(invoice.range.begin, bill_range.begin),
@@ -421,11 +468,12 @@ def main(args):
                     consumption: str = get_consumption(bci.meter, meter_values, consumption_range)
                     bill_item = BillItem(invoice, bci, appartements, bill_range, row, 0, appartement_size, consumption, None)
                     result_sheet.write(row, bill_item)
+                    row += 1
                 else:
                     bill_item = BillItem(invoice, bci, appartements, bill_range, row, 0, appartement_size, 0, None)
                     result_sheet.write(row, bill_item)
+                    row += 1
 
-                row += 1
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Nebenkosten Abrechner')
