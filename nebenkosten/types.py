@@ -40,6 +40,9 @@ class Date:
     def __str__(self):
         return self.date.strftime('%d.%m.%Y')
 
+    def __hash__(self):
+        return hash(self.date)
+
 @dataclass
 class DateRange:
     ''' A date range '''

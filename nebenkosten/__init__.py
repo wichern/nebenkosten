@@ -3,8 +3,10 @@
 
 from typing import List, Tuple
 
-from nebenkosten.types import Tenant, DateRange, Date
+from nebenkosten.types import Tenant, DateRange, Date, MeterValue, Meter, MeterValueException
 from nebenkosten.excel import InputSheet
+
+METER_VALUE_SHEET_NAME='Zählerstände'
 
 def get_people_count_change_dates(tenants: List[Tenant], range: DateRange) -> List[Tuple[Date, int]]:
     ret: List[Date, int] = []
