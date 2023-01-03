@@ -3,6 +3,7 @@
 
 from typing import List, Tuple
 import copy
+import enum
 from dataclasses import dataclass
 import datetime
 
@@ -141,6 +142,16 @@ class Meter:
     name: str
     number: str
     unit: str
+
+class SplitType(enum.Enum):
+    PER_APPARTEMENT = 'Pro Wohnung'
+    PER_PERSON = 'Pro Person'
+    PER_SQUAREMETER = 'Pro Quadratmeter'
+    PER_CONSUMPTION = 'Nach Verbrauch'
+    HALF = 'Hälfte'
+    THIRD = 'Drittel'
+    QUARTER = 'Viertel'
+    COMPLETE = 'Komplett'
 
 @dataclass
 class BillCalculationItem:

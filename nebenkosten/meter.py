@@ -4,15 +4,12 @@
 import bisect
 from typing import Tuple
 
-from nebenkosten import MeterValue, DateRange, Date, MeterValueException
+from nebenkosten import MeterValue, Date, MeterValueException
 
 class MeterManager(object):
     ''' MeterValue helper 
     
     This class filter out all meter values of name given in the constructor.
-    It can then calculate 'Consumption' values for dates.
-
-    All calculated meter values are stored as well.
 
     The most important part of this class is to replace dates with cell values in the formuale.
     Unfortunately, we cannot know the cell values before we write them into the result sheet.    
