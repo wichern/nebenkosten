@@ -11,6 +11,10 @@ class MeterValueException(Exception):
     ''' Raised, when a meter value could not be read nor estimated. '''
     pass
 
+class InvalidCellValue(Exception):
+    ''' Raised, when a value in the input sheet is not correct. '''
+    pass
+
 @dataclass
 class Date:
     ''' A date (Converts from string representation(s)) '''

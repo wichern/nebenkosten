@@ -25,38 +25,6 @@ class MeterManager(object):
 
         self._meter_name = meter_name
 
-    def add_meter_value(self, date: Date):
-        ''' Make sure that a meter value for given date exists. '''
-
-        # When we have a measured meter value for this date we can return it immediately.
-        if date in self.values:
-            return self.values[date]
-
-        self.values[date] = MeterValue(
-            self._meter_name,
-            None,  # empty count (formula added later).
-            date,
-            'Berechnet'
-        )
-
-    def get_count_formula(self, date) -> str:
-        ''' Create a formula, calculating the meter value in the result sheet. '''
-
-        before, after = self.__get_surrounding_dates(date)
-        before_row = self.get_row(before)
-        after_row = self.get_row(after)
-        
-        # Calculate the total consumption between measured values.
-        delta_value = f'C{after_row}-C{before_row}'
-
-        # Calculate the days between measured values.
-        delta_days_total = f'_xlfn.days(B{after_row},B{before_row})'
-
-        # Calculate the days between before date and date.
-        delta_days_new = f'_xlfn.days(B{self.get_row(date)},B{before_row})'
-
-        return f'=C{before_row}+({delta_value})/{delta_days_total}*{delta_days_new}'
-
     def set_row(self, date: Date, row: int):
         ''' Map date to row in cell '''
         self.values[date].row = row
@@ -64,7 +32,7 @@ class MeterManager(object):
     def get_row(self, date: Date) -> int:
         return self.values[date].row
 
-    def __get_surrounding_dates(self, date: Date) -> Tuple[Date, Date]:
+    def get_surrounding_dates(self, date: Date) -> Tuple[Date, Date]:
         ''' Return the latest date before `date` and the first date after `date` '''
 
         idx = bisect.bisect_left(self._measured_dates, date)

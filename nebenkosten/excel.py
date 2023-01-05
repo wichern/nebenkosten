@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import enum
+from typing import List
 
 import openpyxl
 
-from nebenkosten.types import Invoice, Appartement, Tenant, MeterValue, Meter, Date, DateRange, BillCalculationItem, SplitType
+from nebenkosten.types import Invoice, Appartement, Tenant, MeterValue, Meter, Date, DateRange, BillCalculationItem
 
 class InputSheet(enum.Enum):
     ''' Name of the sheets in the input file '''
@@ -16,7 +17,7 @@ class InputSheet(enum.Enum):
     METERS = 'Zähler'
     BILL_CALCULATION_ITEMS = 'Abrechnungseinstellungen'
 
-class InputSheetReader():
+class InputSheetReader:
     '''
     Parse the input sheet.
     '''
@@ -97,17 +98,21 @@ class InputSheetReader():
     def get_meter(self, meter_name) -> Meter:
         ''' Get Meter by name. '''
         return next(m for m in self.meter if m.name == meter_name)
-        
+
+    def get_invoices(self, bci: BillCalculationItem, date_range: DateRange) -> List[Invoice]:
+        ''' List all invoices related to given bci in given date range. '''
+        return filter(lambda i: i.type == bci.invoice_type and i.range.overlaps(date_range), self.invoices)
+
 class ResultSheet(enum.Enum):
     ''' Sheet names in the result sheet. '''
     OVERVIEW = 'Zusammenfassung'
     DETAILS = 'Details'
     METER_VALUES = 'Zählerstände'
 
-class RowWriter():
-    ''' Helper class to write a row into a sheet '''
+class CellWriter:
+    ''' Helper class to write into a cell of a sheet '''
 
-    def __init__(self, sheet, row: int, column: int = 1):
+    def __init__(self, sheet, row: int, column: int):
         self._sheet = sheet
         self._row = row
         self._column = column
@@ -142,21 +147,31 @@ class RowWriter():
         cell.value = content
         if number_format:
             cell.number_format = number_format
+
+    def row(self):
+        ''' Get the row of this writer '''
+        return self._row
+
+class RowWriter(CellWriter):
+    ''' Helper class to write a row into a sheet '''
+
+    def write(self, content, number_format = None):
+        ''' Write into a cell '''
+        super().write(content, number_format)
         self._column += 1
 
-class ResultSheetWriter():
+class ResultSheetWriter:
     '''
     Write the result Excel sheet.
     '''
 
     template_filepath = 'example-bill.xlsx'
 
-    def __init__(self, filepath: str, input_sheet: InputSheetReader, bill_range: DateRange):
-        self._filepath = filepath
-        self._input_sheet = input_sheet
-        self._bill_range = bill_range
-        self._bill_item_row = 2
-        self._meter_value_row = 2
+    def __init__(self):
+        self._current_row = {
+            ResultSheet.METER_VALUES: 2,
+            ResultSheet.DETAILS: 2
+        }
 
         self._wb = openpyxl.load_workbook(self.template_filepath)
 
@@ -172,71 +187,17 @@ class ResultSheetWriter():
         for cell in self._wb[ResultSheet.DETAILS.value]['1']:
             cell.style = 'header'
 
-    def add_bill_item(self, invoice: Invoice, bci: BillCalculationItem, total_people_count: int = 0, comment: str = None, consumption: str = None):
-        row_writer = RowWriter(self._wb[ResultSheet.DETAILS.value], self._bill_item_row)
-        row_writer.write_date(max(self._bill_range.begin, invoice.range.begin))
-        row_writer.write_date(min(self._bill_range.end, invoice.range.end))
-        row_writer.write_number('=_xlfn.days(B{0}, A{0})'.format(self._bill_item_row), precision=0)
-        row_writer.write(invoice.type)
-        row_writer.write(invoice.notes)
-        row_writer.write(bci.meter)
-        row_writer.write_currency(invoice.net)
-        row_writer.write_number(invoice.amount)
-        row_writer.write_percentage(invoice.tax)
-        row_writer.write_currency('=G{0}*H{0}*(1+I{0})'.format(self._bill_item_row))
-        row_writer.write_number(f'=_xlfn.days("{invoice.range.end}", "{invoice.range.begin}")', unit='Tage', precision=0)
-        row_writer.write(bci.split)
-        
-        if bci.split == SplitType.PER_APPARTEMENT.value:
-            row_writer.write_percentage(f'=1/{len(self._input_sheet.appartements)}')
-        elif bci.split == SplitType.PER_PERSON.value:
-            row_writer.write_percentage(f'={self._input_sheet.tenant.people}/{total_people_count}')
-        elif bci.split == SplitType.PER_SQUAREMETER.value:
-            row_writer.write_percentage(f'={self._input_sheet.appartement.size}/{sum([a.size for a in self._input_sheet.appartements])}')
-        elif bci.split == SplitType.PER_CONSUMPTION.value:
-            row_writer.write_number(consumption, unit=bci.unit)
-        elif bci.split == SplitType.HALF.value:
-            row_writer.write_percentage('=1/2')
-        elif bci.split == SplitType.THIRD.value:
-            row_writer.write_percentage('=1/3')
-        elif bci.split == SplitType.QUARTER.value:
-            row_writer.write_percentage('=1/4')
-        elif bci.split == SplitType.COMPLETE.value:
-            row_writer.write_percentage('1')
-        else:
-            raise InvalidCellValue('Unknown bill split: "%s"' % split)
+    def row_writer(self, sheet: ResultSheet):
+        ''' Create a row writer for the next row in given sheet. '''
+        writer = RowWriter(self._wb[sheet.value], self._current_row[sheet], 1)
+        self._current_row[sheet] += 1
+        return writer
 
-        if bci.split == 'Nach Verbrauch':
-            row_writer.write_currency('=G{0}*(1+I{0})*M{0}'.format(self._bill_item_row))
-        else:
-            row_writer.write_currency('=J{0}/K{0}*C{0}*M{0}'.format(self._bill_item_row))
+    def cell_writer(self, sheet: ResultSheet, row: int, column: int):
+        ''' Create a cell writer for the given row and column in given sheet. '''
+        return CellWriter(self._wb[sheet.value], row, column)
 
-        if comment:
-            row_writer.write(comment)
-
-        self._bill_item_row += 1
-
-    def add_meter_value(self, meter_value: MeterValue):
-        row_writer = RowWriter(self._wb[ResultSheet.METER_VALUES.value], self._meter_value_row)
-        row_writer.write(meter_value.name)
-        row_writer.write_date(meter_value.date)
-        if meter_value.count:
-            meter = self._input_sheet.get_meter(meter_value.name)
-            row_writer.write_number(meter_value.count, unit=meter.unit)
-            row_writer.write('Gemessen')
-        self._meter_value_row += 1
-        return self._meter_value_row - 1
-
-    def update_meter_value_formula(self, meter_value: MeterValue, formula: str):
-        meter = self._input_sheet.get_meter(meter_value.name)
-        row_writer = RowWriter(self._wb[ResultSheet.METER_VALUES.value], meter_value.row, column=3)
-        row_writer.write_number(formula, unit=meter.unit)
-        row_writer.write('Berechnet', )
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def save(self, filepath):
         ''' Write the result '''
 
-        self._wb.save(self._filepath)
+        self._wb.save(filepath)
