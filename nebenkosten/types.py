@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+''' Basic types used in nebenkosten '''
+
 from typing import List, Tuple
 import copy
 import enum
@@ -9,11 +11,12 @@ import datetime
 
 class MeterValueException(Exception):
     ''' Raised, when a meter value could not be read nor estimated. '''
-    pass
 
 class InvalidCellValue(Exception):
     ''' Raised, when a value in the input sheet is not correct. '''
-    pass
+
+class InputFileError(Exception):
+    ''' Raised when there is a general error with the input file. '''
 
 @dataclass
 class Date:
@@ -25,12 +28,15 @@ class Date:
 
     @classmethod
     def from_str(cls, date_str: str):
+        ''' Create Date from string '''
         return Date(datetime.datetime.strptime(date_str, '%d.%m.%Y').date())
 
     def yesterday(self):
+        ''' Get day before '''
         return Date(self.date - datetime.timedelta(days=1))
 
     def tomorrow(self):
+        ''' Get day after '''
         return Date(self.date + datetime.timedelta(days=1))
 
     def __le__(self, other) -> bool:
@@ -60,9 +66,10 @@ class DateRange:
 
     def __contains__(self, date: Date) -> bool:
         ''' Check if date is in range '''
-        return date >= self.begin and date <= self.end
+        return self.begin <= date <= self.end
 
 @dataclass
+# pylint: disable=too-many-instance-attributes
 class Invoice:
     ''' Invoice structure '''
     type: str
@@ -106,7 +113,7 @@ class Invoice:
             invoice_split = copy.deepcopy(self)
             invoice_split.range.begin = invoice_begin
             ret.append((invoice_split, people_count_before))
-        
+
         return ret
 
 @dataclass
@@ -148,6 +155,7 @@ class Meter:
     unit: str
 
 class SplitType(enum.Enum):
+    ''' Enumeration of bill split types '''
     PER_APPARTEMENT = 'Pro Wohnung'
     PER_PERSON = 'Pro Person'
     PER_SQUAREMETER = 'Pro Quadratmeter'

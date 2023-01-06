@@ -9,33 +9,19 @@ import argparse
 from dataclasses import dataclass
 import logging
 from typing import List, Tuple, Dict
+import sys
 
 from nebenkosten import Date, DateRange, Invoice, BillCalculationItem, SplitType
 from nebenkosten import RowWriter, ResultSheet, ResultSheetWriter, InputSheetReader
 from nebenkosten import MeterManager
-from nebenkosten import InvalidCellValue
+from nebenkosten import InvalidCellValue, InputFileError
 
 __author__ = "Paul Wichern"
 __license__ = "MIT"
 __version__ = "0.1.0"
 
-# Setup logging to file
-logging.basicConfig(
-    filename='nebenkosten.log',
-    level=logging.INFO,
-    encoding='utf-8',
-    format= '[%(asctime)s] {%(pathname)s:%(lineno)-3d} %(levelname)-8s - %(message)s',
-    datefmt='%H:%M:%S')
-
-# Add logging to stdout
-console = logging.StreamHandler()
-console.setLevel(logging.INFO)
-formatter = logging.Formatter('%(levelname)-8s %(message)s')
-console.setFormatter(formatter)
-logging.getLogger('').addHandler(console)
-
 # TODO: Write categories to overview page
-# TODO: Print report, showing (logging)
+# TODO: How to detect and report missing bills in range?
 # TODO: Handle conversion of m³ into kWh (detect unit mismatch between invoice and bci?)
 # TODO: Bundle Excel Sheet with all invoices into a zip
 # TODO: Mention invoice filename in BillItem Row
@@ -78,6 +64,7 @@ class BillItem:
         if self.comment:
             row_writer.write(self.comment)
 
+# pylint: disable=too-few-public-methods
 class BillCreator:
     ''' Helper class to create a bill '''
 
@@ -93,7 +80,7 @@ class BillCreator:
         ''' Create the bill '''
 
         for bci in self._input.bcis:
-            print(bci.split)
+            logging.debug(bci)
             if bci.split == SplitType.PER_CONSUMPTION.value:
                 self.__per_consumption(bci)
             elif bci.split == SplitType.PER_PERSON.value:
@@ -113,9 +100,14 @@ class BillCreator:
         dates = set()
         meter_manager = MeterManager(self._input.meter_values, bci.meter)
         for invoice in self.__invoices(bci):
+            logging.debug(invoice)
+
             consumption_range = DateRange(
                 max(invoice.range.begin, self._range.begin),
                 min(invoice.range.end, self._range.end))
+
+            logging.debug('Verbrauchszeitraum: %s bis %s', consumption_range.begin, consumption_range.end)
+            
             dates.add(consumption_range.begin)
             dates.add(consumption_range.end)
 
@@ -144,7 +136,7 @@ class BillCreator:
 
             rows[mv_date] = row.row()
 
-        # 3. Update all meter value formuales, now that we know their rows in the result sheet.
+        # 3. Update all meter value formulas, now that we know their rows in the result sheet.
         for mv_date in sorted(dates):
             if mv_date not in meter_manager.values:
                 row = rows[mv_date]
@@ -169,8 +161,11 @@ class BillCreator:
         ''' Handle all BCI that are based on tenant count '''
 
         for invoice in self.__invoices(bci):
+            logging.debug(invoice)
+
             comment = None  # In order to only append the comment to the second invoice
             for invoice_part, people_count in invoice.split(self._split_dates):
+                logging.debug('Rechnungsteil (%d Personen): %s', people_count, str(invoice_part))
                 billed_range = DateRange(
                     max(invoice_part.range.begin, self._range.begin),
                     min(invoice_part.range.end, self._range.end))
@@ -185,6 +180,8 @@ class BillCreator:
         ''' Handle all BCI that are based on percentage '''
 
         for invoice in self.__invoices(bci):
+            logging.debug(invoice)
+
             split_percentage = ''
             if bci.split == SplitType.PER_APPARTEMENT.value:
                 split_percentage = f'=1/{len(self._input.appartements)}'
@@ -255,21 +252,50 @@ class BillCreator:
         return filter(lambda i: i.type == bci.invoice_type \
             and i.range.overlaps(self._range), self._input.invoices)
 
-if __name__ == '__main__':
+def main():
+    ''' Main '''
+    # Parse command line arguments.
     parser = argparse.ArgumentParser(description='Nebenkosten Abrechner')
-
     parser.add_argument('invoices', help='Pfad zu Nebenkostentabelle', nargs='?')
-    parser.add_argument('begin', help='Startdatum', nargs='?',
-        type=lambda s: Date.from_str(s))
-    parser.add_argument('end', help='Enddatum', nargs='?',
-        type=lambda s: Date.from_str(s))
+    parser.add_argument('begin', help='Startdatum', nargs='?', type=Date.from_str)
+    parser.add_argument('end', help='Enddatum', nargs='?', type=Date.from_str)
     parser.add_argument('appartement', help='Wohnung', nargs='?')
-    parser.add_argument('out', help='Ausgabedatei', nargs='?')
-
     args = parser.parse_args()
 
+    filename = f'{args.appartement}-{args.begin}-{args.end}'\
+        .replace(' ', '_')\
+        .replace('.', '_')
+
+    print(filename)
+
+    # Setup logging to file
+    logging.basicConfig(
+        filename=filename + '.log',
+        level=logging.DEBUG,
+        encoding='utf-8',
+        format= '[%(asctime)s] {%(pathname)s:%(lineno)-3d} %(levelname)-8s - %(message)s',
+        datefmt='%H:%M:%S')
+
+    # Add logging to stdout
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(levelname)-8s %(message)s')
+    console.setFormatter(formatter)
+    logging.getLogger('').addHandler(console)
+
+    logging.info('Erstelle Nebenkostenabrechnung für "%s" von %s bis %s',
+        args.appartement, args.begin, args.end)
+
+    # Create bill
     bill_range = DateRange(args.begin, args.end)
     input_sheet = InputSheetReader(args.invoices, args.appartement, bill_range)
 
-    bill = BillCreator(input_sheet, bill_range, args.out)
+    bill = BillCreator(input_sheet, bill_range, filename + '.xlsx')
     bill.create()
+
+if __name__ == '__main__':
+    try:
+        main()
+    except InputFileError:
+        logging.fatal('Parameter oder Eingabedatei nicht korrekt.')
+        sys.exit(1)

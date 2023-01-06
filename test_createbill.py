@@ -3,7 +3,7 @@
 import unittest
 import pytest
 
-from nebenkosten import Tenant, Date, DateRange, get_people_count_change_dates
+from nebenkosten import Tenant, Date, DateRange
 
 class CreateBill(unittest.TestCase):
     def testDateRangeContains(self):
@@ -53,25 +53,25 @@ class CreateBill(unittest.TestCase):
         assert Date.from_str('13.05.2021') in tenant
         assert Date.from_str('01.01.2080') in tenant
 
-    def test_get_people_count_change_dates(self):
-        tenants = [
-            Tenant('T1', 'A1', Date.from_str('01.01.2020'), Date.from_str('31.01.2020'), 1),
-            Tenant('T2', 'A1', Date.from_str('01.02.2020'), Date.from_str('31.12.2020'), 2),
-            Tenant('T3', 'A2', Date.from_str('01.01.2020'), Date.from_str('31.08.2020'), 3),
-            Tenant('T3', 'A2', Date.from_str('01.09.2020'), Date.from_str('31.12.2020'), 1),
-        ]
-        split_dates = get_people_count_change_dates(tenants, DateRange(Date.from_str('01.01.2020'), Date.from_str('31.12.2020')))
+    # def test_get_people_count_change_dates(self):
+    #     tenants = [
+    #         Tenant('T1', 'A1', Date.from_str('01.01.2020'), Date.from_str('31.01.2020'), 1),
+    #         Tenant('T2', 'A1', Date.from_str('01.02.2020'), Date.from_str('31.12.2020'), 2),
+    #         Tenant('T3', 'A2', Date.from_str('01.01.2020'), Date.from_str('31.08.2020'), 3),
+    #         Tenant('T3', 'A2', Date.from_str('01.09.2020'), Date.from_str('31.12.2020'), 1),
+    #     ]
+    #     split_dates = get_people_count_change_dates(tenants, DateRange(Date.from_str('01.01.2020'), Date.from_str('31.12.2020')))
 
-        assert len(split_dates) == 3
+    #     assert len(split_dates) == 3
 
-        assert split_dates[0][0] == Date.from_str('01.01.2020')
-        assert split_dates[0][1] == 4
+    #     assert split_dates[0][0] == Date.from_str('01.01.2020')
+    #     assert split_dates[0][1] == 4
 
-        assert split_dates[1][0] == Date.from_str('01.02.2020')
-        assert split_dates[1][1] == 5
+    #     assert split_dates[1][0] == Date.from_str('01.02.2020')
+    #     assert split_dates[1][1] == 5
 
-        assert split_dates[2][0] == Date.from_str('01.09.2020')
-        assert split_dates[2][1] == 3
+    #     assert split_dates[2][0] == Date.from_str('01.09.2020')
+    #     assert split_dates[2][1] == 3
 
     # def test_split_invoice_where_person_count_changes(self):
     #     tenants = [

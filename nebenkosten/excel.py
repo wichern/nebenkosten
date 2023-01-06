@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+'''
+Reader for input and output excel sheets.
+'''
+
 import enum
+import logging
 from typing import List
 
 import openpyxl
 
-from nebenkosten.types import Invoice, Appartement, Tenant, MeterValue, Meter, Date, DateRange, BillCalculationItem
+from nebenkosten.types import Invoice, Appartement, Tenant, MeterValue, Meter
+from nebenkosten.types import Date, DateRange, BillCalculationItem
+from nebenkosten import InputFileError
 
 class InputSheet(enum.Enum):
     ''' Name of the sheets in the input file '''
@@ -17,6 +24,7 @@ class InputSheet(enum.Enum):
     METERS = 'Zähler'
     BILL_CALCULATION_ITEMS = 'Abrechnungseinstellungen'
 
+# pylint: disable=too-many-instance-attributes
 class InputSheetReader:
     '''
     Parse the input sheet.
@@ -29,6 +37,7 @@ class InputSheetReader:
         :param bill_range:          Bill range
         '''
 
+        logging.debug('Lade %s ...', path)
         workbook = openpyxl.load_workbook(filename=str(path))
 
         self.invoices = []
@@ -46,13 +55,17 @@ class InputSheetReader:
                     row[8],
                     row[9])
                 self.invoices.append(invoice)
+        logging.debug('%d Rechnungen', len(self.invoices))
 
         self.appartements = []
         for row in self.__get_rows(workbook, InputSheet.APPARTEMENTS):
             self.appartements.append(Appartement(row[0], row[1]))
+        logging.debug('%d Wohnungen', len(self.appartements))
 
-        self.appartement = None
-        self.appartement = next(a for a in self.appartements if a.name == appartement_name)
+        self.appartement = next((a for a in self.appartements if a.name == appartement_name), None)
+        if not self.appartement:
+            logging.error('Gesuchte Wohnung nicht in Eingabedatei!')
+            raise InputFileError()
 
         self.tenants = []
         for row in self.__get_rows(workbook, InputSheet.TENANTS):
@@ -70,17 +83,28 @@ class InputSheetReader:
                     int(row[4])
                 )
             )
+        logging.debug('%d Mieter', len(self.tenants))
 
-        self.tenant = None
-        self.tenant = next(t for t in self.tenants if bill_range.begin in t and bill_range.end in t and t.appartement == appartement_name)
+        self.tenant = next((t for t in self.tenants if bill_range.begin in t\
+            and t.appartement == appartement_name), None)
+        if not self.tenant:
+            logging.error('Kein Mieter für den Zeitraum in der Wohnung bekannt.')
+            raise InputFileError()
+        if bill_range.end not in self.tenant:
+            logging.error('Der Mieter war nicht über den gesamten Rechnungszeitraum'\
+                ' in der Wohnung (%s bis %s)', self.tenant.moving_in, self.tenant.moving_out)
+            raise InputFileError()
+        logging.info('Mieter: %s', self.tenant.name)
 
         self.meter_values = []
         for row in self.__get_rows(workbook, InputSheet.METER_VALUES):
             self.meter_values.append(MeterValue(row[0], row[1], Date.from_str(row[2]), row[3]))
+        logging.debug('%d Zählerstände', len(self.meter_values))
 
         self.meter = []
         for row in self.__get_rows(workbook, InputSheet.METERS):
             self.meter.append(Meter(row[0], row[1], row[2]))
+        logging.debug('%d Zähler', len(self.meter))
 
         self.bcis = []
         for row in self.__get_rows(workbook, InputSheet.BILL_CALCULATION_ITEMS):
@@ -88,6 +112,7 @@ class InputSheetReader:
             # Skip BCIs that are not relevant for this appartement
             if bci.appartement == appartement_name:
                 self.bcis.append(bci)
+        logging.debug('%d Rechnungseinstellungen', len(self.bcis))
 
     def __get_rows(self, workbook, sheet: InputSheet):
         ''' Get all data rows of given sheet. '''
@@ -97,11 +122,12 @@ class InputSheetReader:
 
     def get_meter(self, meter_name) -> Meter:
         ''' Get Meter by name. '''
-        return next(m for m in self.meter if m.name == meter_name)
+        return next((m for m in self.meter if m.name == meter_name), None)
 
     def get_invoices(self, bci: BillCalculationItem, date_range: DateRange) -> List[Invoice]:
         ''' List all invoices related to given bci in given date range. '''
-        return filter(lambda i: i.type == bci.invoice_type and i.range.overlaps(date_range), self.invoices)
+        return filter(lambda i: i.type == bci.invoice_type and i.range.overlaps(date_range),
+            self.invoices)
 
 class ResultSheet(enum.Enum):
     ''' Sheet names in the result sheet. '''
@@ -200,4 +226,5 @@ class ResultSheetWriter:
     def save(self, filepath):
         ''' Write the result '''
 
+        logging.info('Schreibe Rechnung nach %s ...', filepath)
         self._wb.save(filepath)
