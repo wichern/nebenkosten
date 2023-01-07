@@ -53,6 +53,19 @@ class CreateBill(unittest.TestCase):
         assert Date.from_str('13.05.2021') in tenant
         assert Date.from_str('01.01.2080') in tenant
 
+    def testDateRangeOverlaps(self):
+        range_a = DateRange(
+            Date.from_str('01.01.2020'),
+            Date.from_str('15.01.2020')
+        )
+
+        range_b = DateRange(
+            Date.from_str('17.01.2019'),
+            Date.from_str('18.01.2020')
+        )
+
+        assert range_b.overlaps(range_a)
+
     # def test_get_people_count_change_dates(self):
     #     tenants = [
     #         Tenant('T1', 'A1', Date.from_str('01.01.2020'), Date.from_str('31.01.2020'), 1),

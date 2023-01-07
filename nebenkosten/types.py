@@ -62,7 +62,11 @@ class DateRange:
 
     def overlaps(self, other) -> bool:
         ''' Check if this date overlaps with given date '''
-        return self.begin in other or self.end in other
+        if self.begin in other or self.end in other:
+            return True
+        if self.begin < other.begin and self.end > other.end:
+            return True
+        return False
 
     def __contains__(self, date: Date) -> bool:
         ''' Check if date is in range '''

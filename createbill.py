@@ -44,7 +44,7 @@ class BillItem:
 
         row_writer.write_date(self.billed_range.begin)
         row_writer.write_date(self.billed_range.end)
-        row_writer.write_number(f'=_xlfn.days(B{row}, A{row})', precision=0)
+        row_writer.write_number(f'=_xlfn.days(B{row}, A{row})+1', precision=0)
         row_writer.write(self.invoice.type)
         row_writer.write(self.invoice.notes)
         row_writer.write(self.bci.meter)
@@ -53,7 +53,7 @@ class BillItem:
         row_writer.write_percentage(self.invoice.tax)
         row_writer.write_currency(f'=G{row}*H{row}*(1+I{row})')
         row_writer.write_number(
-            f'=_xlfn.days("{self.invoice.range.end}", "{self.invoice.range.begin}")',
+            f'=_xlfn.days("{self.invoice.range.end}", "{self.invoice.range.begin}")+1',
             unit='Tage',
             precision=0)
         row_writer.write(self.bci.split)
@@ -272,7 +272,7 @@ class BillCreator:
         if unit_from == 'm³' and unit_to == 'kWh':
             # Wärmeverbrauch für Warmwasser (kWh) = Warmwasserverbrauch (m³) x 
             #   (Warmwassertemperatur (K) – Kaltwassertemperatur (K)) x 2,5
-            return f'({value})*({WATER_TEMPERATURE_WARM}-{WATER_TEMPERATURE_COLD}*2.5)'
+            return f'({value})*({WATER_TEMPERATURE_WARM}-{WATER_TEMPERATURE_COLD})*2.5'
         logging.error('Kann "%s" nicht in "%s" konvertieren.', unit_from, unit_to)
         raise InputFileError
 
