@@ -143,33 +143,33 @@ class CellWriter:
         self._row = row
         self._column = column
 
-    def write_date(self, date: Date):
+    def write_date(self, date: Date, style: str = 'content'):
         ''' Write a date '''
-        self.write(date.date, number_format='DD.MM.YY')
+        self.write(date.date, style=style, number_format='DD.MM.YY')
 
-    def write_number(self, number: str, unit: str = None, precision: int = 2):
+    def write_number(self, number: str, style: str = 'content', unit: str = None, precision: int = 2):
         ''' Write a nunmber '''
         precision_format = '0'
         if precision > 0:
             precision_format += '.' + (precision * '0')
 
         if unit:
-            self.write(number, number_format=f'{precision_format}" {unit}"')
+            self.write(number, style=style, number_format=f'{precision_format}" {unit}"')
         else:
-            self.write(number, number_format=precision_format)
+            self.write(number, style=style, number_format=precision_format)
 
-    def write_currency(self, number: str):
+    def write_currency(self, number: str, style: str = 'content'):
         ''' Write a currency '''
-        self.write(number, number_format='0.00" "€')
+        self.write(number, style=style, number_format='0.00" "€')
 
-    def write_percentage(self, number: str):
+    def write_percentage(self, number: str, style: str = 'content'):
         ''' Write a percentage '''
-        self.write(number, number_format='0.00" "%')
+        self.write(number, style=style, number_format='0.00" "%')
 
-    def write(self, content, number_format = None):
+    def write(self, content, style: str = 'content', number_format = None):
         ''' Write into a cell '''
         cell = self._sheet.cell(row=self._row, column=self._column)
-        cell.style = 'content'
+        cell.style = style
         cell.value = content
         if number_format:
             cell.number_format = number_format
@@ -181,9 +181,9 @@ class CellWriter:
 class RowWriter(CellWriter):
     ''' Helper class to write a row into a sheet '''
 
-    def write(self, content, number_format = None):
+    def write(self, content, style: str = 'content', number_format = None):
         ''' Write into a cell '''
-        super().write(content, number_format)
+        super().write(content, style=style, number_format=number_format)
         self._column += 1
 
 class ResultSheetWriter:
@@ -196,22 +196,34 @@ class ResultSheetWriter:
     def __init__(self):
         self._current_row = {
             ResultSheet.METER_VALUES: 2,
-            ResultSheet.DETAILS: 2
+            ResultSheet.DETAILS: 2,
+            ResultSheet.OVERVIEW: 5  # Write categories
         }
 
         self._wb = openpyxl.load_workbook(self.template_filepath)
+        self.__define_styles()
 
-        header = openpyxl.styles.NamedStyle(name='header')
-        header.font = openpyxl.styles.Font(name='Calibri', bold=True, size=11)
-        self._wb.add_named_style(header)
+    def __define_styles(self):
+        ''' Create named styles for use in CellWrite, RowWriter '''
+        style = openpyxl.styles.NamedStyle(name='header')
+        style.font = openpyxl.styles.Font(name='Calibri', bold=True, size=11)
+        self._wb.add_named_style(style)
 
-        content = openpyxl.styles.NamedStyle(name='content')
-        content.font = openpyxl.styles.Font(name='Calibri', size=11)
-        self._wb.add_named_style(content)
+        style = openpyxl.styles.NamedStyle(name='header-overview')
+        style.font = openpyxl.styles.Font(name='Calibri', bold=True, size=14)
+        self._wb.add_named_style(style)
 
-        # Apply styles
-        for cell in self._wb[ResultSheet.DETAILS.value]['1']:
-            cell.style = 'header'
+        style = openpyxl.styles.NamedStyle(name='double-underlined')
+        style.font = openpyxl.styles.Font(name='Calibri', size=11, bold=True, underline='double')
+        self._wb.add_named_style(style)
+
+        style = openpyxl.styles.NamedStyle(name='content')
+        style.font = openpyxl.styles.Font(name='Calibri', size=11)
+        self._wb.add_named_style(style)
+
+        style = openpyxl.styles.NamedStyle(name='bold')
+        style.font = openpyxl.styles.Font(name='Calibri', size=11, bold=True)
+        self._wb.add_named_style(style)
 
     def row_writer(self, sheet: ResultSheet):
         ''' Create a row writer for the next row in given sheet. '''
@@ -222,6 +234,53 @@ class ResultSheetWriter:
     def cell_writer(self, sheet: ResultSheet, row: int, column: int):
         ''' Create a cell writer for the given row and column in given sheet. '''
         return CellWriter(self._wb[sheet.value], row, column)
+
+    def write_overview(self, appartement_name, bill_range: DateRange, bcis):
+        ''' Write information in overview sheet '''
+
+        # Title
+        self.cell_writer(ResultSheet.OVERVIEW, 1, 2).write('Nebenkostenabrechnung ' + appartement_name, style='header-overview')
+
+        # Date range
+        self.cell_writer(ResultSheet.OVERVIEW, 2, 3).write_date(bill_range.begin)
+        self.cell_writer(ResultSheet.OVERVIEW, 2, 4).write_date(bill_range.end)
+
+        # Invoice type sums
+        invoice_types = sorted(set([bci.invoice_type for bci in bcis]))
+
+        for invoice_type in invoice_types:
+            row = self.row_writer(ResultSheet.OVERVIEW)
+            row.write('')
+            row.write(invoice_type)
+            row.write_currency(f'=D{row.row()}/12')
+            row.write_currency(f'=SUMIF({ResultSheet.DETAILS.value}!$D$2:$D${self._current_row[ResultSheet.DETAILS]},"{invoice_type}",{ResultSheet.DETAILS.value}!$N$2:$N${self._current_row[ResultSheet.DETAILS]})')
+
+        row = self.row_writer(ResultSheet.OVERVIEW)  # empty row
+
+        # SUMS
+        row = self.row_writer(ResultSheet.OVERVIEW)
+        row.write('')
+        row.write('Summe', style='bold')
+        row.write_currency(f'=SUM($C$5:$C${row.row()-2}', style='bold')
+        row.write_currency(f'=SUM($D$5:$D${row.row()-2}', style='bold')
+        row_sums = row.row()
+
+        # Payments on advance
+        row = self.row_writer(ResultSheet.OVERVIEW)
+        row.write('')
+        row.write('Abschlagszahlungen', style='bold')
+        row.write('')
+        row.write_currency('BITTE EINTRAGEN', style='bold')
+        row_payments = row.row()
+
+        row = self.row_writer(ResultSheet.OVERVIEW)  # empty row
+
+        # Result
+        row = self.row_writer(ResultSheet.OVERVIEW)
+        row.write('')
+        row.write('Ergebnis', style='bold')
+        row.write('')
+        row.write_currency(f'=$D${row_payments}-$D${row_sums}', style='double-underlined')
 
     def save(self, filepath):
         ''' Write the result '''

@@ -20,9 +20,11 @@ __author__ = "Paul Wichern"
 __license__ = "MIT"
 __version__ = "0.1.0"
 
-# TODO: Write categories to overview page
+WATER_TEMPERATURE_COLD = 10
+WATER_TEMPERATURE_WARM = 43
+
 # TODO: How to detect and report missing bills in range?
-# TODO: Handle conversion of m³ into kWh (detect unit mismatch between invoice and bci?)
+# TODO: Make diagram use the correct range (maybe create custom chart https://openpyxl.readthedocs.io/en/stable/charts/pie.html)
 # TODO: Bundle Excel Sheet with all invoices into a zip
 # TODO: Mention invoice filename in BillItem Row
 
@@ -88,12 +90,18 @@ class BillCreator:
             else:
                 self.__per_percentage(bci)
 
+        # We write the overview after calculating the bill.
+        # This way we already know how many rows where added to the DETAILS sheet.
+        self._out.write_overview(self._input.appartement.name, self._range, self._input.bcis)
         self._out.save(self._out_path)
 
     def __per_consumption(self, bci):
         ''' Handle all BCI that are based on consumption '''
 
-        meter_unit = self._input.get_meter(bci.meter).unit
+        meter = self._input.get_meter(bci.meter)
+        if not meter:
+            logging.error('Zähler "%s" nicht in Eingabedatei.', bci.meter)
+            raise InputFileError
 
         # 1. Create all meter values that do not exist already and store all meter values we
         #    want to see in our result sheet into a set.
@@ -131,7 +139,7 @@ class BillCreator:
             row.write_date(mv_date)
 
             if mv_date in meter_manager.values:
-                row.write_number(meter_manager.values[mv_date].count, unit=meter_unit)
+                row.write_number(meter_manager.values[mv_date].count, unit=meter.unit)
                 row.write('Gemessen')
 
             rows[mv_date] = row.row()
@@ -142,7 +150,7 @@ class BillCreator:
                 row = rows[mv_date]
                 count = self.__count_formula(mv_date, meter_manager, rows)
                 self._out.cell_writer(ResultSheet.METER_VALUES, row, 3)\
-                    .write_number(count, unit=meter_unit)
+                    .write_number(count, unit=meter.unit)
                 self._out.cell_writer(ResultSheet.METER_VALUES, row, 4)\
                     .write('Berechnet')
 
@@ -152,9 +160,16 @@ class BillCreator:
                 max(invoice.range.begin, self._range.begin),
                 min(invoice.range.end, self._range.end))
 
-            consumption = f'={ResultSheet.METER_VALUES.value}!C{rows[consumption_range.end]}'\
+            consumption = f'{ResultSheet.METER_VALUES.value}!C{rows[consumption_range.end]}'\
                 f'-{ResultSheet.METER_VALUES.value}!C{rows[consumption_range.begin]}'
-            bill_item = BillItem(invoice, bci, consumption_range, consumption)
+
+            # Check if unit types match and add conversion and comment otherwise.
+            comment = None
+            if bci.unit != meter.unit:
+                consumption = self.__convert_units(meter.unit, bci.unit, consumption)
+                comment = f'{meter.unit} in {bci.unit} umgerechnet.'
+
+            bill_item = BillItem(invoice, bci, consumption_range, f'={consumption}', comment=comment)
             bill_item.write(self._out.row_writer(ResultSheet.DETAILS))
 
     def __per_person(self, bci):
@@ -251,6 +266,15 @@ class BillCreator:
         ''' Get all invoices related to this BCI. '''
         return filter(lambda i: i.type == bci.invoice_type \
             and i.range.overlaps(self._range), self._input.invoices)
+
+    def __convert_units(self, unit_from: str, unit_to: str, value: str) -> str:
+        ''' Add Excel formula to convert `value` '''
+        if unit_from == 'm³' and unit_to == 'kWh':
+            # Wärmeverbrauch für Warmwasser (kWh) = Warmwasserverbrauch (m³) x 
+            #   (Warmwassertemperatur (K) – Kaltwassertemperatur (K)) x 2,5
+            return f'({value})*({WATER_TEMPERATURE_WARM}-{WATER_TEMPERATURE_COLD}*2.5)'
+        logging.error('Kann "%s" nicht in "%s" konvertieren.', unit_from, unit_to)
+        raise InputFileError
 
 def main():
     ''' Main '''
