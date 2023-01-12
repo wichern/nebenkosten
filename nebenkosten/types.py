@@ -68,9 +68,61 @@ class DateRange:
             return True
         return False
 
-    def __contains__(self, date: Date) -> bool:
-        ''' Check if date is in range '''
-        return self.begin <= date <= self.end
+    def __contains__(self, other) -> bool:
+        ''' Check if date or daterange is in range '''
+        if isinstance(other, Date):
+            return self.begin <= other <= self.end
+        if isinstance(other, DateRange):
+            return other.begin in self and other.end in self
+        raise ValueError('other must be Date or DateRange')
+
+@dataclass
+class DateCoverage:
+    ''' A set of ranges specifying dates in a range that are not covered. '''
+    ranges: List[DateRange]
+
+    def __init__(self, initial_range: DateRange):
+        ''' Constructor '''
+        self.ranges = [initial_range]
+
+    def cover(self, covered: DateRange):
+        ''' Remove the given range from coverage '''
+        new_ranges = []
+
+        for not_covered_range in self.ranges:
+            # Only continue with ranges that are not completely covered by the new range.
+            if not_covered_range in covered:
+                continue
+
+            # There are four cases:
+            #
+            # 1. We have to remove something from the front of `not_covered_range`
+            # 2. We have to remove something from the end of `not_covered_range`
+            # 3. We have to remove something in the middle of `not_covered_range`
+            # 4. We do not have to remove anything
+
+            # 1. Remove from front?
+            if not_covered_range.begin in covered and not_covered_range.end not in covered:
+                new_ranges.append(
+                    DateRange(covered.end.tomorrow(), not_covered_range.end))
+
+            # 2. Remove from end?
+            elif not_covered_range.begin not in covered and not_covered_range.end in covered:
+                new_ranges.append(
+                    DateRange(not_covered_range.begin, covered.begin.yesterday()))
+
+            # 3. Remove from the middle
+            elif covered in not_covered_range:
+                new_ranges.append(
+                    DateRange(not_covered_range.begin, covered.begin.yesterday()))
+                new_ranges.append(
+                    DateRange(covered.end.tomorrow(), not_covered_range.end))
+
+            # 4. No overlapping
+            else:
+                new_ranges.append(not_covered_range)
+
+        self.ranges = new_ranges
 
 @dataclass
 # pylint: disable=too-many-instance-attributes

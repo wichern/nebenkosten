@@ -247,7 +247,7 @@ class ResultSheetWriter:
 
         # Invoice type sums
         invoice_types = sorted(set([bci.invoice_type for bci in bcis]))
-
+        data_end_row = 0
         for invoice_type in invoice_types:
             row = self.row_writer(ResultSheet.OVERVIEW)
             row.write('')
@@ -255,6 +255,8 @@ class ResultSheetWriter:
 
             row.write_currency(f'=D{row.row()}/((_xlfn.days($D$2,$C$2)+1)/IF(OR(MOD($C$2,400)=0,AND(MOD($C$2,4)=0,MOD($C$2,100)<>0)),365,366)*12)')
             row.write_currency(f'=SUMIF({ResultSheet.DETAILS.value}!$D$2:$D${self._current_row[ResultSheet.DETAILS]},"{invoice_type}",{ResultSheet.DETAILS.value}!$N$2:$N${self._current_row[ResultSheet.DETAILS]})')
+
+            data_end_row = row.row()
 
         row = self.row_writer(ResultSheet.OVERVIEW)  # empty row
 
@@ -282,6 +284,29 @@ class ResultSheetWriter:
         row.write('Ergebnis', style='bold')
         row.write('')
         row.write_currency(f'=$D${row_payments}-$D${row_sums}', style='double-underlined')
+
+        # Pie Chart
+        sheet = self._wb[ResultSheet.OVERVIEW.value]
+        pie = openpyxl.chart.PieChart()
+        labels = openpyxl.chart.Reference(sheet, min_col=2, min_row=5, max_row=data_end_row)
+        data = openpyxl.chart.Reference(sheet, min_col=4, min_row=5, max_row=data_end_row)
+        pie.add_data(data, titles_from_data=False)
+        pie.set_categories(labels)
+        pie.height = 19 # default is 7.5
+        pie.width = 21 # default is 15
+        
+        pie.legend = None
+
+        pie.series[0].graphicalProperties.line.solidFill = "FFFFFF"
+        pie.series[0].graphicalProperties.line.width = 20000
+
+        # Show values in chart
+        pie.dataLabels = openpyxl.chart.label.DataLabelList()
+        pie.dataLabels.showSerName = False   # Show percentage
+        pie.dataLabels.showVal = False
+        pie.dataLabels.dLblPos = "outEnd"
+        
+        sheet.add_chart(pie, f'B{row.row() + 2}')
 
     def save(self, filepath):
         ''' Write the result '''

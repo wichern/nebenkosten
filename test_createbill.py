@@ -3,7 +3,7 @@
 import unittest
 import pytest
 
-from nebenkosten import Tenant, Date, DateRange
+from nebenkosten import Tenant, Date, DateRange, DateCoverage
 
 class CreateBill(unittest.TestCase):
     def testDateRangeContains(self):
@@ -65,6 +65,67 @@ class CreateBill(unittest.TestCase):
         )
 
         assert range_b.overlaps(range_a)
+        assert range_a.overlaps(range_b)
+
+    def testDateInRange(self):
+        range = DateRange(
+            Date.from_str('01.01.2020'),
+            Date.from_str('15.01.2020')
+        )
+
+        assert Date.from_str('01.01.2020') in range
+        assert Date.from_str('02.01.2020') in range
+        assert Date.from_str('15.01.2020') in range
+        assert Date.from_str('31.12.2019') not in range
+        assert Date.from_str('16.01.2020') not in range
+
+    def testRangeInRange(self):
+        range = DateRange(
+            Date.from_str('01.01.2020'),
+            Date.from_str('15.01.2020')
+        )
+
+        assert DateRange(Date.from_str('01.01.2020'), Date.from_str('15.01.2020')) in range
+        assert DateRange(Date.from_str('31.12.2019'), Date.from_str('15.01.2020')) not in range
+        assert DateRange(Date.from_str('31.12.2019'), Date.from_str('16.01.2020')) not in range
+        assert DateRange(Date.from_str('05.01.2020'), Date.from_str('16.01.2020')) not in range
+        assert DateRange(Date.from_str('05.01.2020'), Date.from_str('10.01.2020')) in range
+
+    def testDateCoverage(self):
+        initial_range = DateRange(
+            Date.from_str('01.01.2020'),
+            Date.from_str('31.12.2020')
+        )
+        coverage = DateCoverage(initial_range)
+        #print(coverage)
+        assert len(coverage.ranges) == 1
+
+        covered_range = DateRange(Date.from_str('01.02.2020'), Date.from_str('29.02.2020'))
+        coverage.cover(covered_range)
+        #print(coverage)
+        for uncovered_range in coverage.ranges:
+            assert not uncovered_range.overlaps(covered_range)
+        assert len(coverage.ranges) == 2
+
+        covered_range = DateRange(Date.from_str('15.08.2020'), Date.from_str('16.08.2020'))
+        coverage.cover(covered_range)
+        #print(coverage)
+        for uncovered_range in coverage.ranges:
+            assert not uncovered_range.overlaps(covered_range)
+
+        covered_range = DateRange(Date.from_str('15.08.2020'), Date.from_str('16.08.2020'))
+        coverage.cover(covered_range)
+        #print(coverage)
+        for uncovered_range in coverage.ranges:
+            assert not uncovered_range.overlaps(covered_range)
+        assert len(coverage.ranges) == 3
+
+        covered_range = DateRange(Date.from_str('01.01.2020'), Date.from_str('31.07.2020'))
+        coverage.cover(covered_range)
+        #print(coverage)
+        for uncovered_range in coverage.ranges:
+            assert not uncovered_range.overlaps(covered_range)
+        assert len(coverage.ranges) == 2
 
     # def test_get_people_count_change_dates(self):
     #     tenants = [

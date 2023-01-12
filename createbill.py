@@ -11,7 +11,7 @@ import logging
 from typing import List, Tuple, Dict
 import sys
 
-from nebenkosten import Date, DateRange, Invoice, BillCalculationItem, SplitType
+from nebenkosten import Date, DateRange, DateCoverage, Invoice, BillCalculationItem, SplitType
 from nebenkosten import RowWriter, ResultSheet, ResultSheetWriter, InputSheetReader
 from nebenkosten import MeterManager
 from nebenkosten import InvalidCellValue, InputFileError
@@ -23,8 +23,6 @@ __version__ = "0.1.0"
 WATER_TEMPERATURE_COLD = 10
 WATER_TEMPERATURE_WARM = 43
 
-# TODO: How to detect and report missing bills in range?
-# TODO: Make diagram use the correct range (maybe create custom chart https://openpyxl.readthedocs.io/en/stable/charts/pie.html)
 # TODO: Bundle Excel Sheet with all invoices into a zip
 # TODO: Mention invoice filename in BillItem Row
 
@@ -77,6 +75,7 @@ class BillCreator:
         self._out_path = out_path
         self._bill_items = []
         self._split_dates = self.__get_people_count_changes()
+        self._coverages = {bci.invoice_type: DateCoverage(bill_range) for bci in input_sheet.bcis}
 
     def create(self):
         ''' Create the bill '''
@@ -90,11 +89,18 @@ class BillCreator:
             else:
                 self.__per_percentage(bci)
 
+        # Analyze bill coverage
+        for bci in self._input.bcis:
+            for uncovered_range in self._coverages[bci.invoice_type].ranges:
+                logging.warning('Für %s wurde von %s bis %s nichts in Rechnung gestellt.',
+                    bci.invoice_type, uncovered_range.begin, uncovered_range.end)
+
         # We write the overview after calculating the bill.
         # This way we already know how many rows where added to the DETAILS sheet.
         self._out.write_overview(self._input.appartement.name, self._range, self._input.bcis)
         self._out.save(self._out_path)
 
+    # pylint: disable=too-many-locals
     def __per_consumption(self, bci):
         ''' Handle all BCI that are based on consumption '''
 
@@ -114,8 +120,9 @@ class BillCreator:
                 max(invoice.range.begin, self._range.begin),
                 min(invoice.range.end, self._range.end))
 
-            logging.debug('Verbrauchszeitraum: %s bis %s', consumption_range.begin, consumption_range.end)
-            
+            logging.debug('Verbrauchszeitraum: %s bis %s',
+                consumption_range.begin, consumption_range.end)
+
             dates.add(consumption_range.begin)
             dates.add(consumption_range.end)
 
@@ -169,8 +176,12 @@ class BillCreator:
                 consumption = self.__convert_units(meter.unit, bci.unit, consumption)
                 comment = f'{meter.unit} in {bci.unit} umgerechnet.'
 
-            bill_item = BillItem(invoice, bci, consumption_range, f'={consumption}', comment=comment)
+            bill_item = BillItem(
+                invoice, bci, consumption_range, f'={consumption}', comment=comment)
             bill_item.write(self._out.row_writer(ResultSheet.DETAILS))
+
+            # Update bill coverage for this BCI
+            self._coverages[bci.invoice_type].cover(bill_item.billed_range)
 
     def __per_person(self, bci):
         ''' Handle all BCI that are based on tenant count '''
@@ -187,6 +198,9 @@ class BillCreator:
                 split_percentage = f'={self._input.tenant.people}/{people_count}'
                 bill_item = BillItem(invoice, bci, billed_range, split_percentage, comment=comment)
                 bill_item.write(self._out.row_writer(ResultSheet.DETAILS))
+
+                # Update bill coverage for this BCI
+                self._coverages[bci.invoice_type].cover(bill_item.billed_range)
 
                 # Comment will be added to the second invoice, if it was split.
                 comment = 'Gesamtbewohnerzahl geändert'
@@ -219,6 +233,9 @@ class BillCreator:
                 min(invoice.range.end, self._range.end))
             bill_item = BillItem(invoice, bci, billed_range, split_percentage)
             bill_item.write(self._out.row_writer(ResultSheet.DETAILS))
+
+            # Update bill coverage for this BCI
+            self._coverages[bci.invoice_type].cover(bill_item.billed_range)
 
     def __get_people_count_changes(self) -> List[Tuple[Date, int]]:
         ''' Calculate a list of dates and their new people count '''
@@ -270,7 +287,7 @@ class BillCreator:
     def __convert_units(self, unit_from: str, unit_to: str, value: str) -> str:
         ''' Add Excel formula to convert `value` '''
         if unit_from == 'm³' and unit_to == 'kWh':
-            # Wärmeverbrauch für Warmwasser (kWh) = Warmwasserverbrauch (m³) x 
+            # Wärmeverbrauch für Warmwasser (kWh) = Warmwasserverbrauch (m³) x
             #   (Warmwassertemperatur (K) – Kaltwassertemperatur (K)) x 2,5
             return f'({value})*({WATER_TEMPERATURE_WARM}-{WATER_TEMPERATURE_COLD})*2.5'
         logging.error('Kann "%s" nicht in "%s" konvertieren.', unit_from, unit_to)
@@ -289,8 +306,6 @@ def main():
     filename = f'{args.appartement}-{args.begin}-{args.end}'\
         .replace(' ', '_')\
         .replace('.', '_')
-
-    print(filename)
 
     # Setup logging to file
     logging.basicConfig(
