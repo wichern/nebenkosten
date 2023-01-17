@@ -15,6 +15,7 @@ from nebenkosten import Date, DateRange, DateCoverage, Invoice, BillCalculationI
 from nebenkosten import RowWriter, ResultSheet, ResultSheetWriter, InputSheetReader
 from nebenkosten import MeterManager
 from nebenkosten import InvalidCellValue, InputFileError
+from nebenkosten import get_people_count_changes
 
 __author__ = "Paul Wichern"
 __license__ = "MIT"
@@ -74,7 +75,7 @@ class BillCreator:
         self._out = ResultSheetWriter()
         self._out_path = out_path
         self._bill_items = []
-        self._split_dates = self.__get_people_count_changes()
+        self._split_dates = get_people_count_changes(bill_range, input_sheet.tenants)
         self._coverages = {bci.invoice_type: DateCoverage(bill_range) for bci in input_sheet.bcis}
 
     def create(self):
@@ -236,27 +237,6 @@ class BillCreator:
 
             # Update bill coverage for this BCI
             self._coverages[bci.invoice_type].cover(bill_item.billed_range)
-
-    def __get_people_count_changes(self) -> List[Tuple[Date, int]]:
-        ''' Calculate a list of dates and their new people count '''
-
-        ret = []
-
-        date = self._range.begin
-        idx: int = 0
-        people_count_before: int = -1
-
-        while date <= self._range.end:
-            people_count: int = sum(t.people for t in self._input.tenants if date in t)
-
-            if people_count != people_count_before:
-                ret.append((date, people_count))
-
-            people_count_before = people_count
-            date = date.tomorrow()
-            idx += 1
-
-        return ret
 
     def __count_formula(self,
                         date: Date,

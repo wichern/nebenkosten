@@ -8,6 +8,7 @@ import copy
 import enum
 from dataclasses import dataclass
 import datetime
+import logging
 
 class MeterValueException(Exception):
     ''' Raised, when a meter value could not be read nor estimated. '''
@@ -143,7 +144,11 @@ class Invoice:
 
         ret: List[Tuple[Invoice, int]] = []
 
-        people_count_before: int = 0
+        if not split_dates:
+            logging.error('No split dates defined')
+            return ret
+
+        people_count_before: int = split_dates[0][1]
         invoice_begin: 'Date' = self.range.begin
         end_of_invoice: bool = False
         for split_date, people_count in split_dates:
