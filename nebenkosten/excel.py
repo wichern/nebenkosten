@@ -13,7 +13,7 @@ import openpyxl
 
 from nebenkosten.types import Invoice, Appartement, Tenant, MeterValue, Meter
 from nebenkosten.types import Date, DateRange, BillCalculationItem
-from nebenkosten import InputFileError
+from nebenkosten import InputFileError, SplitType
 
 class InputSheet(enum.Enum):
     ''' Name of the sheets in the input file '''
@@ -53,7 +53,8 @@ class InputSheetReader:
                     invoice_range,
                     row[7],
                     row[8],
-                    row[9])
+                    row[9],
+                    row[11])
                 self.invoices.append(invoice)
         logging.debug('%d Rechnungen', len(self.invoices))
 
@@ -80,7 +81,9 @@ class InputSheetReader:
                     row[1],
                     Date.from_str(row[2]),
                     moving_out,
-                    int(row[4])
+                    int(row[4]),
+                    row[5],
+                    row[6]
                 )
             )
         logging.debug('%d Mieter', len(self.tenants))
@@ -111,6 +114,11 @@ class InputSheetReader:
             bci = BillCalculationItem(row[0], row[1], row[2], row[3], row[4])
             # Skip BCIs that are not relevant for this appartement
             if bci.appartement == appartement_name:
+                # Check that for consumption there is a unit specified
+                if bci.split == SplitType.PER_CONSUMPTION.value and not bci.unit:
+                    logging.critical('Abrechnung für "%s", "%s" nach Verbrauch, aber ohne Einheit zu definieren',
+                        bci.appartement, bci.invoice_type)
+                    raise InputFileError
                 self.bcis.append(bci)
         logging.debug('%d Rechnungseinstellungen', len(self.bcis))
 
@@ -235,11 +243,12 @@ class ResultSheetWriter:
         ''' Create a cell writer for the given row and column in given sheet. '''
         return CellWriter(self._wb[sheet.value], row, column)
 
-    def write_overview(self, appartement_name, bill_range: DateRange, bcis):
+    def write_overview(self, appartement_name, tenant_name, bill_range: DateRange, bcis):
         ''' Write information in overview sheet '''
 
         # Title
         self.cell_writer(ResultSheet.OVERVIEW, 1, 2).write('Nebenkostenabrechnung ' + appartement_name, style='header-overview')
+        self.cell_writer(ResultSheet.OVERVIEW, 1, 4).write(tenant_name, style='header-overview')
 
         # Date range
         self.cell_writer(ResultSheet.OVERVIEW, 2, 3).write_date(bill_range.begin)

@@ -10,6 +10,8 @@ from dataclasses import dataclass
 import logging
 from typing import List, Tuple, Dict
 import sys
+import shutil
+import tempfile
 
 from nebenkosten import Date, DateRange, DateCoverage, Invoice, BillCalculationItem, SplitType
 from nebenkosten import RowWriter, ResultSheet, ResultSheetWriter, InputSheetReader
@@ -19,13 +21,16 @@ from nebenkosten import get_people_count_changes
 
 __author__ = "Paul Wichern"
 __license__ = "MIT"
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 WATER_TEMPERATURE_COLD = 10
 WATER_TEMPERATURE_WARM = 43
 
-# TODO: Bundle Excel Sheet with all invoices into a zip
-# TODO: Mention invoice filename in BillItem Row
+# 2.0
+# TODO: Abrechnungseinstellungen haben ein Start und ein Enddatum
+# TODO: Vermieteranteil an CO2 Steuer berücksichtigen
+# TODO: Create PDF
+# TODO: Simple GUI
 
 @dataclass
 class BillItem:
@@ -45,7 +50,10 @@ class BillItem:
         row_writer.write_date(self.billed_range.end)
         row_writer.write_number(f'=_xlfn.days(B{row}, A{row})+1', precision=0)
         row_writer.write(self.invoice.type)
-        row_writer.write(self.invoice.notes)
+        if self.comment:
+            row_writer.write(self.comment)
+        else:
+            row_writer.write(self.invoice.notes)
         row_writer.write(self.bci.meter)
         row_writer.write_currency(self.invoice.net)
         row_writer.write_number(self.invoice.amount)
@@ -62,8 +70,7 @@ class BillItem:
         else:
             row_writer.write_percentage(self.split_percentage)
             row_writer.write_currency(f'=J{row}/K{row}*C{row}*M{row}')
-        if self.comment:
-            row_writer.write(self.comment)
+        row_writer.write(self.invoice.path)
 
 # pylint: disable=too-few-public-methods
 class BillCreator:
@@ -77,8 +84,9 @@ class BillCreator:
         self._bill_items = []
         self._split_dates = get_people_count_changes(bill_range, input_sheet.tenants)
         self._coverages = {bci.invoice_type: DateCoverage(bill_range) for bci in input_sheet.bcis}
+        self._receipts = set()
 
-    def create(self):
+    def create(self, receipts_dir : str):
         ''' Create the bill '''
 
         for bci in self._input.bcis:
@@ -93,13 +101,20 @@ class BillCreator:
         # Analyze bill coverage
         for bci in self._input.bcis:
             for uncovered_range in self._coverages[bci.invoice_type].ranges:
-                logging.warning('Für %s wurde von %s bis %s nichts in Rechnung gestellt.',
+                logging.warning('Für "%s" wurde von %s bis %s nichts in Rechnung gestellt.',
                     bci.invoice_type, uncovered_range.begin, uncovered_range.end)
 
         # We write the overview after calculating the bill.
         # This way we already know how many rows where added to the DETAILS sheet.
-        self._out.write_overview(self._input.appartement.name, self._range, self._input.bcis)
+        self._out.write_overview(self._input.appartement.name, self._input.tenant.name, self._range, self._input.bcis)
         self._out.save(self._out_path)
+
+        # Create zip file with receipts
+        logging.info('Erstelle Archiv mit Rechnungen ...')
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for receipt in self._receipts:
+                shutil.copy(receipts_dir + '/' + receipt, temp_dir + '/' + receipt)
+            shutil.make_archive(self._out_path.replace('.xlsx', ''), 'zip', temp_dir)
 
     # pylint: disable=too-many-locals
     def __per_consumption(self, bci):
@@ -180,6 +195,7 @@ class BillCreator:
             bill_item = BillItem(
                 invoice, bci, consumption_range, f'={consumption}', comment=comment)
             bill_item.write(self._out.row_writer(ResultSheet.DETAILS))
+            self._receipts.add(invoice.path)
 
             # Update bill coverage for this BCI
             self._coverages[bci.invoice_type].cover(bill_item.billed_range)
@@ -199,6 +215,7 @@ class BillCreator:
                 split_percentage = f'={self._input.tenant.people}/{people_count}'
                 bill_item = BillItem(invoice, bci, billed_range, split_percentage, comment=comment)
                 bill_item.write(self._out.row_writer(ResultSheet.DETAILS))
+                self._receipts.add(invoice.path)
 
                 # Update bill coverage for this BCI
                 self._coverages[bci.invoice_type].cover(bill_item.billed_range)
@@ -234,6 +251,7 @@ class BillCreator:
                 min(invoice.range.end, self._range.end))
             bill_item = BillItem(invoice, bci, billed_range, split_percentage)
             bill_item.write(self._out.row_writer(ResultSheet.DETAILS))
+            self._receipts.add(invoice.path)
 
             # Update bill coverage for this BCI
             self._coverages[bci.invoice_type].cover(bill_item.billed_range)
@@ -281,6 +299,7 @@ def main():
     parser.add_argument('begin', help='Startdatum', nargs='?', type=Date.from_str)
     parser.add_argument('end', help='Enddatum', nargs='?', type=Date.from_str)
     parser.add_argument('appartement', help='Wohnung', nargs='?')
+    parser.add_argument('receipts', help='Ordner mit gescannten Rechnungen', nargs='?')
     args = parser.parse_args()
 
     filename = f'{args.appartement}-{args.begin}-{args.end}'\
@@ -290,6 +309,7 @@ def main():
     # Setup logging to file
     logging.basicConfig(
         filename=filename + '.log',
+        filemode='w',  # Overwrite existing file
         level=logging.DEBUG,
         encoding='utf-8',
         format= '[%(asctime)s] {%(pathname)s:%(lineno)-3d} %(levelname)-8s - %(message)s',
@@ -310,7 +330,7 @@ def main():
     input_sheet = InputSheetReader(args.invoices, args.appartement, bill_range)
 
     bill = BillCreator(input_sheet, bill_range, filename + '.xlsx')
-    bill.create()
+    bill.create(args.receipts)
 
 if __name__ == '__main__':
     try:

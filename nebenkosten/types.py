@@ -138,6 +138,7 @@ class Invoice:
     net: str
     amount: str
     tax: str
+    path: str
 
     def split(self, split_dates: List[Tuple['Invoice', int]]) -> List[Tuple['Invoice', int]]:
         ''' Split this invoices at dates, where the total people count over all tenants changed. '''
@@ -191,6 +192,8 @@ class Tenant:
     moving_in: Date
     moving_out: Date
     people: int
+    rent: str
+    advance: str
 
     def __contains__(self, date: Date) -> bool:
         ''' Check if date is in range '''
