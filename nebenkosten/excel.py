@@ -264,16 +264,18 @@ class ResultSheetWriter:
         self.cell_writer(ResultSheet.OVERVIEW, 2, 4).write_date(bill_range.end)
 
         # Invoice type sums
-        invoice_types = sorted(set([bci.invoice_type for bci in bcis]))
-        data_end_row = 0
-        for invoice_type in invoice_types:
+        categories = {}
+        for bci in bcis:
+            categories.setdefault(bci.category, set()).add(bci.invoice_type)
+        for category, invoice_types in categories.items():
             row = self.row_writer(ResultSheet.OVERVIEW)
             row.write('')
-            row.write(invoice_type)
-
+            row.write(category)
             row.write_currency(f'=D{row.row()}/((_xlfn.days($D$2,$C$2)+1)/IF(OR(MOD($C$2,400)=0,AND(MOD($C$2,4)=0,MOD($C$2,100)<>0)),365,366)*12)')
-            row.write_currency(f'=SUMIF({ResultSheet.DETAILS.value}!$D$2:$D${self._current_row[ResultSheet.DETAILS]},"{invoice_type}",{ResultSheet.DETAILS.value}!$N$2:$N${self._current_row[ResultSheet.DETAILS]})')
-
+            formulas = []
+            for invoice_type in invoice_types:
+                formulas.append(f'SUMIF({ResultSheet.DETAILS.value}!$D$2:$D${self._current_row[ResultSheet.DETAILS]},"{invoice_type}",{ResultSheet.DETAILS.value}!$N$2:$N${self._current_row[ResultSheet.DETAILS]})')
+            row.write_currency('=' + '+'.join(formulas))
             data_end_row = row.row()
 
         row = self.row_writer(ResultSheet.OVERVIEW)  # empty row
