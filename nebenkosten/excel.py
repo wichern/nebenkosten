@@ -42,20 +42,23 @@ class InputSheetReader:
 
         self.invoices = []
         for row in self.__get_rows(workbook, InputSheet.INVOICES):
-            invoice_range = DateRange(Date.from_str(row[5]), Date.from_str(row[6]))
-            if invoice_range.overlaps(bill_range):
-                invoice = Invoice(
-                    row[0],
-                    row[1],
-                    row[2],
-                    Date.from_str(row[3]),
-                    row[4],
-                    invoice_range,
-                    row[7],
-                    row[8],
-                    row[9],
-                    row[11])
-                self.invoices.append(invoice)
+            try:
+                invoice_range = DateRange(Date.from_str(row[5]), Date.from_str(row[6]))
+                if invoice_range.overlaps(bill_range):
+                    invoice = Invoice(
+                        row[0],
+                        row[1],
+                        row[2],
+                        Date.from_str(row[3]),
+                        row[4],
+                        invoice_range,
+                        row[7],
+                        row[8],
+                        row[9],
+                        row[11])
+                    self.invoices.append(invoice)
+            except ValueError as value_error:
+                raise ValueError(f'Lesen von {row} fehlgeschlagen: {str(value_error)}') 
         logging.debug('%d Rechnungen', len(self.invoices))
 
         self.appartements = []
@@ -70,22 +73,25 @@ class InputSheetReader:
 
         self.tenants = []
         for row in self.__get_rows(workbook, InputSheet.TENANTS):
-            # For 'moving out' we also accept None
-            moving_out = None
-            if row[3]:
-                moving_out = Date.from_str(row[3])
+            try:
+                # For 'moving out' we also accept None
+                moving_out = None
+                if row[3]:
+                    moving_out = Date.from_str(row[3])
 
-            self.tenants.append(
-                Tenant(
-                    row[0],
-                    row[1],
-                    Date.from_str(row[2]),
-                    moving_out,
-                    int(row[4]),
-                    row[5],
-                    row[6]
+                self.tenants.append(
+                    Tenant(
+                        row[0],
+                        row[1],
+                        Date.from_str(row[2]),
+                        moving_out,
+                        int(row[4]),
+                        row[5],
+                        row[6]
+                    )
                 )
-            )
+            except ValueError as value_error:
+                raise ValueError(f'Lesen von {row} fehlgeschlagen: {str(value_error)}') 
         logging.debug('%d Mieter', len(self.tenants))
 
         self.tenant = next((t for t in self.tenants if bill_range.begin in t\
@@ -101,7 +107,10 @@ class InputSheetReader:
 
         self.meter_values = []
         for row in self.__get_rows(workbook, InputSheet.METER_VALUES):
-            self.meter_values.append(MeterValue(row[0], row[1], Date.from_str(row[2]), row[3]))
+            try:
+                self.meter_values.append(MeterValue(row[0], row[1], Date.from_str(row[2]), row[3]))
+            except ValueError as value_error:
+                raise ValueError(f'Lesen von {row} fehlgeschlagen: {str(value_error)}') 
         logging.debug('%d Zählerstände', len(self.meter_values))
 
         self.meter = []
@@ -111,7 +120,7 @@ class InputSheetReader:
 
         self.bcis = []
         for row in self.__get_rows(workbook, InputSheet.BILL_CALCULATION_ITEMS):
-            bci = BillCalculationItem(row[0], row[1], row[2], row[3], row[4])
+            bci = BillCalculationItem(row[0], row[1], row[2], row[3], row[4], row[5])
             # Skip BCIs that are not relevant for this appartement
             if bci.appartement == appartement_name:
                 # Check that for consumption there is a unit specified

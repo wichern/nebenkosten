@@ -237,3 +237,4 @@ class BillCalculationItem:
     unit: str
     invoice_type: str
     meter: str
+    category: str

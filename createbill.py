@@ -8,7 +8,7 @@ Bill calculation
 import argparse
 from dataclasses import dataclass
 import logging
-from typing import List, Tuple, Dict
+from typing import Dict
 import sys
 import shutil
 import tempfile
@@ -27,10 +27,16 @@ WATER_TEMPERATURE_COLD = 10
 WATER_TEMPERATURE_WARM = 43
 
 # 2.0
+# TODO: Sort BCI by which is limiting bill creation the most.
+#       e.g.:   Strom bis 31.12.2020, Wasser bis 31.03.2021, Müll bis 15.04.2021, ...
+# TODO: Create sheet that calculates costs for each month individually, in order to show changes over time
 # TODO: Abrechnungseinstellungen haben ein Start und ein Enddatum
 # TODO: Vermieteranteil an CO2 Steuer berücksichtigen
 # TODO: Create PDF
 # TODO: Simple GUI
+# TODO: Add validate() to every type for self-check and print cell that contained ill-formated data
+# TODO: Print consumptions in ranges
+# TODO: Set page view to be able to create pdf faster
 
 @dataclass
 class BillItem:
@@ -106,7 +112,11 @@ class BillCreator:
 
         # We write the overview after calculating the bill.
         # This way we already know how many rows where added to the DETAILS sheet.
-        self._out.write_overview(self._input.appartement.name, self._input.tenant.name, self._range, self._input.bcis)
+        self._out.write_overview(
+            self._input.appartement.name,
+            self._input.tenant.name,
+            self._range,
+            self._input.bcis)
         self._out.save(self._out_path)
 
         # Create zip file with receipts
