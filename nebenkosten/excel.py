@@ -271,7 +271,7 @@ class ResultSheetWriter:
             row = self.row_writer(ResultSheet.OVERVIEW)
             row.write('')
             row.write(category)
-            row.write_currency(f'=D{row.row()}/((_xlfn.days($D$2,$C$2)+1)/IF(OR(MOD($C$2,400)=0,AND(MOD($C$2,4)=0,MOD($C$2,100)<>0)),365,366)*12)')
+            row.write_currency(f'=D{row.row()}/((_xlfn.days($D$2,$C$2)+2)/IF(OR(MOD($C$2,400)=0,AND(MOD($C$2,4)=0,MOD($C$2,100)<>0)),365,366)*12)')
             formulas = []
             for invoice_type in invoice_types:
                 formulas.append(f'SUMIF({ResultSheet.DETAILS.value}!$D$2:$D${self._current_row[ResultSheet.DETAILS]},"{invoice_type}",{ResultSheet.DETAILS.value}!$N$2:$N${self._current_row[ResultSheet.DETAILS]})')
