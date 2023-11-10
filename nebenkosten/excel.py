@@ -7,6 +7,7 @@ Reader for input and output excel sheets.
 
 import enum
 import logging
+import os
 from typing import List
 
 import openpyxl
@@ -208,7 +209,7 @@ class ResultSheetWriter:
     Write the result Excel sheet.
     '''
 
-    template_filepath = 'example-bill.xlsx'
+    template_filepath =  os.path.dirname(__file__) + '/../example-bill.xlsx'
 
     def __init__(self):
         self._current_row = {
@@ -217,6 +218,7 @@ class ResultSheetWriter:
             ResultSheet.OVERVIEW: 5  # Write categories
         }
 
+        logging.info('Lese Vorlage von ' + self.template_filepath)
         self._wb = openpyxl.load_workbook(self.template_filepath)
         self.__define_styles()
 

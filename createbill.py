@@ -37,6 +37,8 @@ WATER_TEMPERATURE_WARM = 43
 # TODO: Add validate() to every type for self-check and print cell that contained ill-formated data
 # TODO: Print consumptions in ranges
 # TODO: Set page view to be able to create pdf faster
+# TODO: Neue Abrechnungseinstellung: "Rest" (nimmt Menge aus Rechnung und subtrahiert alle anderweitig in Wohnungen berechneten Verbräuche)
+#       Damit können wir NK für Hauptwohnung berechnen
 
 @dataclass
 class BillItem:
@@ -123,7 +125,8 @@ class BillCreator:
         logging.info('Erstelle Archiv mit Rechnungen ...')
         with tempfile.TemporaryDirectory() as temp_dir:
             for receipt in self._receipts:
-                shutil.copy(receipts_dir + '/' + receipt, temp_dir + '/' + receipt)
+                if receipt:
+                    shutil.copy(receipts_dir + '/' + receipt, temp_dir + '/' + receipt)
             shutil.make_archive(self._out_path.replace('.xlsx', ''), 'zip', temp_dir)
 
     # pylint: disable=too-many-locals
