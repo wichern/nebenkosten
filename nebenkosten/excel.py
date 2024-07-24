@@ -184,7 +184,7 @@ class CellWriter:
         ''' Write a percentage '''
         self.write(number, style=style, number_format='0.00" "%')
 
-    def write(self, content, style: str = 'content', number_format = None):
+    def write(self, content, style: str = 'content', number_format = openpyxl.styles.numbers.FORMAT_TEXT):
         ''' Write into a cell '''
         cell = self._sheet.cell(row=self._row, column=self._column)
         cell.style = style
@@ -199,7 +199,7 @@ class CellWriter:
 class RowWriter(CellWriter):
     ''' Helper class to write a row into a sheet '''
 
-    def write(self, content, style: str = 'content', number_format = None):
+    def write(self, content, style: str = 'content', number_format = openpyxl.styles.numbers.FORMAT_TEXT):
         ''' Write into a cell '''
         super().write(content, style=style, number_format=number_format)
         self._column += 1
@@ -286,8 +286,8 @@ class ResultSheetWriter:
         row = self.row_writer(ResultSheet.OVERVIEW)
         row.write('')
         row.write('Summe', style='bold')
-        row.write_currency(f'=SUM($C$5:$C${row.row()-2}', style='bold')
-        row.write_currency(f'=SUM($D$5:$D${row.row()-2}', style='bold')
+        row.write_currency(f'=SUM($C$5:$C${row.row()-2})', style='bold')
+        row.write_currency(f'=SUM($D$5:$D${row.row()-2})', style='bold')
         row_sums = row.row()
 
         # Payments on advance

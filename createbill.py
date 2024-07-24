@@ -222,9 +222,11 @@ class BillCreator:
             comment = None  # In order to only append the comment to the second invoice
             for invoice_part, people_count in invoice.split(self._split_dates):
                 logging.debug('Rechnungsteil (%d Personen): %s', people_count, str(invoice_part))
+
                 billed_range = DateRange(
                     max(invoice_part.range.begin, self._range.begin),
                     min(invoice_part.range.end, self._range.end))
+
                 split_percentage = f'={self._input.tenant.people}/{people_count}'
                 bill_item = BillItem(invoice, bci, billed_range, split_percentage, comment=comment)
                 bill_item.write(self._out.row_writer(ResultSheet.DETAILS))

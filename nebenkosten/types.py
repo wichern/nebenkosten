@@ -157,7 +157,7 @@ class Invoice:
                 people_count_before = people_count
                 continue
 
-            if split_date >= self.range.begin:
+            if split_date > self.range.begin:
                 invoice_split = copy.deepcopy(self)
                 invoice_split.range.begin = max(self.range.begin, invoice_begin)
                 invoice_split.range.end = min(self.range.end, split_date.yesterday())
