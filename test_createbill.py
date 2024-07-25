@@ -2,7 +2,7 @@
 
 import unittest
 import datetime
-import pytest
+import logging
 
 from nebenkosten import Tenant, Date, DateRange, DateCoverage
 from nebenkosten import Invoice
@@ -35,12 +35,14 @@ class CreateBill(unittest.TestCase):
         assert Date.from_str('31.12.2020').tomorrow() == Date.from_str('01.01.2021')
 
     def testTenantDefault(self):
-        tenant = Tenant('Tenant Name', 'Appartement Name', Date.from_str('15.01.2019'), Date.from_str('12.05.2021'), 1)
+        tenant = Tenant('Tenant Name', 'Appartement Name', Date.from_str('15.01.2019'), Date.from_str('12.05.2021'), 1, 100, 50)
         assert tenant.name == 'Tenant Name'
         assert tenant.appartement == 'Appartement Name'
         assert tenant.moving_in == Date.from_str('15.01.2019')
         assert tenant.moving_out == Date.from_str('12.05.2021')
         assert tenant.people == 1
+        assert tenant.rent == 100
+        assert tenant.advance == 50
 
         assert Date.from_str('14.01.2019') not in tenant
         assert Date.from_str('15.01.2019') in tenant
@@ -48,7 +50,7 @@ class CreateBill(unittest.TestCase):
         assert Date.from_str('13.05.2021') not in tenant
 
     def testTenantNotMoveOut(self):
-        tenant = Tenant('Tenant Name', 'Appartement Name', Date.from_str('15.01.2019'), None, 1)
+        tenant = Tenant('Tenant Name', 'Appartement Name', Date.from_str('15.01.2019'), None, 1, 100, 50)
         assert tenant.moving_out == None
 
         assert Date.from_str('14.01.2019') not in tenant
@@ -132,10 +134,10 @@ class CreateBill(unittest.TestCase):
 
     def test_get_people_count_change_dates(self):
         tenants = [
-            Tenant('T1', 'A1', Date.from_str('01.01.2020'), Date.from_str('31.01.2020'), 1),
-            Tenant('T2', 'A1', Date.from_str('01.02.2020'), Date.from_str('31.12.2020'), 2),
-            Tenant('T3', 'A2', Date.from_str('01.01.2020'), Date.from_str('31.08.2020'), 3),
-            Tenant('T3', 'A2', Date.from_str('01.09.2020'), Date.from_str('31.12.2020'), 1),
+            Tenant('T1', 'A1', Date.from_str('01.01.2020'), Date.from_str('31.01.2020'), 1, 100, 50),
+            Tenant('T2', 'A1', Date.from_str('01.02.2020'), Date.from_str('31.12.2020'), 2, 100, 50),
+            Tenant('T3', 'A2', Date.from_str('01.01.2020'), Date.from_str('31.08.2020'), 3, 100, 50),
+            Tenant('T3', 'A2', Date.from_str('01.09.2020'), Date.from_str('31.12.2020'), 1, 100, 50),
         ]
         split_dates = get_people_count_changes(DateRange(Date.from_str('01.01.2020'), Date.from_str('31.12.2020')), tenants)
 
@@ -151,7 +153,7 @@ class CreateBill(unittest.TestCase):
         assert split_dates[2][1] == 3
 
     def test_split_dates(self):
-        invoice = Invoice('I', 'S', 'N', Date(datetime.date(2020, 1, 24)), None, DateRange(Date(datetime.date(2020, 1, 1)), Date(datetime.date(2020, 12, 31))), 138, 1, 0)
+        invoice = Invoice('I', 'S', 'N', Date(datetime.date(2020, 1, 24)), None, DateRange(Date(datetime.date(2020, 1, 1)), Date(datetime.date(2020, 12, 31))), 138, 1, 0, '')
 
         # Empty split dates
         invoices = invoice.split([])
@@ -171,6 +173,20 @@ class CreateBill(unittest.TestCase):
         assert invoices[0][1] == 7
         assert invoices[1][1] == 7
         assert invoices[2][1] == 6
+
+    def test_split_invoice(self):
+        invoice = Invoice(type='Strom', supplier='eon', invoice_number='211162337852', date=Date(date=datetime.date(2024, 3, 19)), notes=None, range=DateRange(begin=Date(date=datetime.date(2023, 3, 6)), end=Date(date=datetime.date(2023, 8, 31))), net=0.4199, amount=1768, tax=0.19, path='2024_03_19_eon.pdf')
+        splits = invoice.split([(Date(date=datetime.date(2023, 4, 1)), 5)])
+        for invoice_part, people_count in splits:
+            print(invoice_part)
+            print(people_count)
+        
+
+            billed_range = DateRange(
+                max(invoice_part.range.begin, Date(datetime.date(2023, 1, 1))),
+                min(invoice_part.range.end, Date(datetime.date(2023, 12, 31))))
+            print(billed_range)
+
 
     # def test_split_invoice_where_person_count_changes(self):
     #     tenants = [

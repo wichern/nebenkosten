@@ -91,6 +91,8 @@ class BillCreator:
         self._out_path = out_path
         self._bill_items = []
         self._split_dates = get_people_count_changes(bill_range, input_sheet.tenants)
+        logging.debug('Datumsgrenzen, an denen sich die Bewohnerzahl geändert hat:')
+        logging.debug(self._split_dates)
         self._coverages = {bci.invoice_type: DateCoverage(bill_range) for bci in input_sheet.bcis}
         self._receipts = set()
 
@@ -222,6 +224,9 @@ class BillCreator:
             comment = None  # In order to only append the comment to the second invoice
             for invoice_part, people_count in invoice.split(self._split_dates):
                 logging.debug('Rechnungsteil (%d Personen): %s', people_count, str(invoice_part))
+
+                if  not invoice_part.range.overlaps(self._range):
+                    continue
 
                 billed_range = DateRange(
                     max(invoice_part.range.begin, self._range.begin),
